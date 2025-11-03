@@ -56,7 +56,7 @@ class MinesweeperLogic:
         return neighbors[valid_mask]
     
     def _place_mines(self, exclude_row, exclude_col):
-        """Place mines randomly using numpy, excluding the first clicked cell and its neighbors"""
+        """Place mines randomly, excluding the first clicked cell and its neighbors"""
         # Create exclusion mask
         exclusion_mask = np.zeros((self.height, self.width), dtype=bool)
         exclusion_mask[exclude_row, exclude_col] = True
@@ -92,7 +92,6 @@ class MinesweeperLogic:
 
     def reveal_cell(self, row, col):
         """
-        Reveal a cell and return list of revealed cells using numpy-optimized flood fill
         Returns: list of (row, col) tuples of all revealed cells
         """
         if not self._is_valid_position(row, col):
