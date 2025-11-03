@@ -1,3 +1,4 @@
 ./pyvenv.cfg
 venv
 .DS_Store
+__pycache__
