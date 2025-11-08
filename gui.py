@@ -1,11 +1,44 @@
+"""
+GUI Module
+==========
+
+This module provides the graphical user interface for the Minesweeper game using PyQt5.
+
+User Manual:
+------------
+How to Play:
+1. Click on a cell to reveal it. The first click is always safe!
+2. Right-click (or long-press) on a cell to place/remove a flag
+3. Numbers show how many mines are adjacent to that cell
+4. Clear all non-mine cells to win!
+
+Features:
+- Three difficulty levels: Easy (9×9, 10 mines), Intermediate (16×16, 40 mines), Expert (30×16, 99 mines)
+- Custom board sizes and mine counts
+- Timer tracks your completion time
+- Mine counter shows remaining unflagged mines
+- Highscores: Your best times are saved automatically when you win
+- Analytics: Generate statistical analysis of random board configurations
+
+Controls:
+- Left-click: Reveal cell
+- Right-click: Toggle flag
+- Reset button (🙂): Start a new game
+- Analytics button: Open analytics dialog
+- Leaderboard button: View top 10 scores for each difficulty
+"""
+
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QGridLayout, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QSpinBox,
-                             QTabWidget, QScrollArea)
+                             QTabWidget, QScrollArea, QDialog, QInputDialog,
+                             QTableWidget, QTableWidgetItem, QHeaderView,
+                             QMessageBox)
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QFont
 
 from game_logic import MinesweeperLogic, CellState, GameState
 from config import Difficulty, GameConfig
+from highscores import get_highscores_manager
 
 
 class CellButton(QPushButton):
@@ -186,6 +219,18 @@ class MinesweeperGUI(QMainWindow):
         self.mine_display = DigitalDisplay()
         top_layout.addWidget(self.mine_display)
         
+        # Analytics button
+        self.analytics_btn = QPushButton('Analytics')
+        self.analytics_btn.setFixedHeight(28)
+        self.analytics_btn.clicked.connect(self.open_analytics)
+        top_layout.addWidget(self.analytics_btn)
+        
+        # Leaderboard button
+        self.leaderboard_btn = QPushButton('Leaderboard')
+        self.leaderboard_btn.setFixedHeight(28)
+        self.leaderboard_btn.clicked.connect(self.open_leaderboard)
+        top_layout.addWidget(self.leaderboard_btn)
+
         top_layout.addStretch()
         
         # Reset button
@@ -291,6 +336,24 @@ class MinesweeperGUI(QMainWindow):
             }
             self.new_game(difficulty)
     
+    def open_analytics(self):
+        """Open the analytics dialog"""
+        # Lazy import so missing plotting libs won't break startup
+        try:
+            from analytics import AnalyticsDialog
+        except Exception as e:
+            # Show error message if import failed
+            QMessageBox.critical(
+                self,
+                "Analytics Error",
+                f"Could not load analytics module:\n{str(e)}\n\n"
+                "Please ensure matplotlib is installed:\npip install matplotlib"
+            )
+            return
+        
+        dlg = AnalyticsDialog(self)
+        dlg.exec_()
+
     def on_tab_changed(self, index):
         """Handle tab change"""
         difficulties = [Difficulty.BEGINNER, Difficulty.INTERMEDIATE, 
@@ -379,11 +442,21 @@ class MinesweeperGUI(QMainWindow):
         return self.cell_buttons[idx]
     
     def game_over(self, won, exploded_row=None, exploded_col=None):
-        """Handle game over"""
+        """
+        Handle game over - update UI and save score if won.
+        
+        When the player wins, this method:
+        1. Stops the timer
+        2. Prompts for player name
+        3. Saves the score to the leaderboard
+        4. Updates the reset button to show victory
+        """
         self.timer.stop()
         
         if won:
             self.reset_btn.setText('😎')
+            # Prompt for player name and save score
+            self.handle_win()
         else:
             self.reset_btn.setText('😵')
             # Reveal all mines
@@ -395,8 +468,149 @@ class MinesweeperGUI(QMainWindow):
                     # Use the passed coordinates
                     btn.set_mine(exploded=is_exploded)
     
+    def handle_win(self):
+        """
+        Handle a win: prompt for player name and save score.
+        
+        This creates a simple dialog asking for the player's name,
+        then saves their time to the leaderboard if it qualifies.
+        """
+        # Get player name
+        name, ok = QInputDialog.getText(
+            self, 
+            "Congratulations!",
+            f"You won in {self.timer_value} seconds!\n\nEnter your name:",
+            text="Player"
+        )
+        
+        if ok and name.strip():
+            # Save score
+            manager = get_highscores_manager()
+            made_it = manager.save_score(
+                name.strip(),
+                self.timer_value,
+                self.game_logic.width,
+                self.game_logic.height,
+                self.game_logic.total_mines
+            )
+            
+            if made_it:
+                QMessageBox.information(
+                    self,
+                    "High Score!",
+                    f"Congratulations {name}!\n"
+                    f"Your time of {self.timer_value} seconds made it to the leaderboard!"
+                )
+            else:
+                QMessageBox.information(
+                    self,
+                    "Well Done!",
+                    f"Great job, {name}!\n"
+                    f"Your time: {self.timer_value} seconds"
+                )
+    
+    def open_leaderboard(self):
+        """Open the leaderboard dialog showing top 10 scores for each difficulty"""
+        dialog = LeaderboardDialog(self)
+        dialog.exec_()
+    
     def update_timer(self):
         """Update the timer display"""
         if self.timer_value < GameConfig.MAX_TIME:
             self.timer_value += 1
             self.timer_display.set_value(self.timer_value)
+
+
+class LeaderboardDialog(QDialog):
+    """
+    Dialog showing the top 10 scores for each difficulty level.
+    
+    This dialog displays leaderboards in a tabbed interface, with one tab
+    for each difficulty (Easy, Intermediate, Expert, and any Custom configurations
+    that have scores).
+    """
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Minesweeper Leaderboard")
+        self.setMinimumSize(500, 400)
+        self.init_ui()
+    
+    def init_ui(self):
+        """Initialize the leaderboard dialog UI"""
+        layout = QVBoxLayout(self)
+        
+        # Create tab widget for different difficulties
+        tab_widget = QTabWidget()
+        
+        manager = get_highscores_manager()
+        all_leaderboards = manager.get_all_leaderboards()
+        
+        # Standard difficulties
+        standard_diffs = [
+            ("Easy", 9, 9, 10),
+            ("Intermediate", 16, 16, 40),
+            ("Expert", 30, 16, 99)
+        ]
+        
+        for name, width, height, mines in standard_diffs:
+            key = manager.get_difficulty_key(width, height, mines)
+            scores = all_leaderboards.get(key, [])
+            table = self.create_leaderboard_table(scores)
+            tab_widget.addTab(table, name)
+        
+        # Custom difficulties
+        for key, scores in all_leaderboards.items():
+            if key.startswith("custom_"):
+                name = manager.get_difficulty_name(key)
+                table = self.create_leaderboard_table(scores)
+                tab_widget.addTab(table, name)
+        
+        layout.addWidget(tab_widget)
+        
+        # Close button
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.close)
+        layout.addWidget(close_btn)
+    
+    def create_leaderboard_table(self, scores):
+        """
+        Create a table widget showing the leaderboard.
+        
+        Args:
+            scores: List of HighscoreEntry objects
+            
+        Returns:
+            QTableWidget populated with score data
+        """
+        table = QTableWidget()
+        table.setColumnCount(4)
+        table.setHorizontalHeaderLabels(["Rank", "Name", "Time (seconds)", "Date"])
+        table.horizontalHeader().setStretchLastSection(True)
+        table.setEditTriggers(QTableWidget.NoEditTriggers)
+        table.setRowCount(max(10, len(scores)))
+        
+        # Populate table
+        for i, entry in enumerate(scores[:10]):  # Top 10 only
+            table.setItem(i, 0, QTableWidgetItem(str(i + 1)))
+            table.setItem(i, 1, QTableWidgetItem(entry.name))
+            table.setItem(i, 2, QTableWidgetItem(str(entry.time)))
+            
+            # Format date nicely
+            try:
+                from datetime import datetime
+                date_obj = datetime.fromisoformat(entry.date)
+                date_str = date_obj.strftime("%Y-%m-%d %H:%M")
+            except:
+                date_str = entry.date
+            table.setItem(i, 3, QTableWidgetItem(date_str))
+        
+        # Fill empty rows
+        for i in range(len(scores), 10):
+            table.setItem(i, 0, QTableWidgetItem(str(i + 1)))
+            table.setItem(i, 1, QTableWidgetItem("---"))
+            table.setItem(i, 2, QTableWidgetItem("---"))
+            table.setItem(i, 3, QTableWidgetItem("---"))
+        
+        table.resizeColumnsToContents()
+        return table

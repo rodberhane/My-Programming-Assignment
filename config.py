@@ -1,6 +1,16 @@
 """
-Minesweeper Game Configuration
-Contains difficulty presets and game constants
+Configuration Module
+====================
+
+This module contains all game configuration constants and difficulty presets.
+
+It defines:
+- Standard difficulty levels (Easy, Intermediate, Expert)
+- Custom game configuration template
+- Visual constants (colors, sizes, fonts)
+- Game limits (min/max board sizes, mine counts)
+
+These constants are used throughout the application to ensure consistency.
 """
 
 class Difficulty:
