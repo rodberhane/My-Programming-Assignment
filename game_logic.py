@@ -361,3 +361,29 @@ class MinesweeperLogic:
         self.flags_placed = 0
         self.cells_revealed = 0
         self.first_click = True
+    
+    def generate_board(self, first_row, first_col):
+        """
+        Generate a board with mines placed (excluding first click and neighbors).
+        This is used for analytics to generate random board configurations.
+        
+        Args:
+            first_row: Row of the first click (to exclude from mine placement)
+            first_col: Column of the first click (to exclude from mine placement)
+        
+        Returns:
+            Dictionary containing:
+            - 'mines': numpy array of mine positions
+            - 'adjacent_counts': numpy array of adjacent mine counts
+            - 'width': board width
+            - 'height': board height
+        """
+        # Place mines (excluding first click and neighbors)
+        self._place_mines(first_row, first_col)
+        
+        return {
+            'mines': self.mines.copy(),
+            'adjacent_counts': self.adjacent_counts.copy(),
+            'width': self.width,
+            'height': self.height
+        }

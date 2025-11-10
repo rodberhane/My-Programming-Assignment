@@ -337,7 +337,7 @@ class MinesweeperGUI(QMainWindow):
             self.new_game(difficulty)
     
     def open_analytics(self):
-        """Open the analytics dialog"""
+        """Open the analytics dialog with current game settings"""
         # Lazy import so missing plotting libs won't break startup
         try:
             from analytics import AnalyticsDialog
@@ -351,8 +351,19 @@ class MinesweeperGUI(QMainWindow):
             )
             return
         
-        dlg = AnalyticsDialog(self)
-        dlg.exec_()
+        # Get current game settings
+        if self.game_logic:
+            width = self.game_logic.width
+            height = self.game_logic.height
+            mines = self.game_logic.total_mines
+        else:
+            # Default to Expert if no game
+            width = 30
+            height = 16
+            mines = 99
+        
+        dlg = AnalyticsDialog(self, width=width, height=height, mines=mines)
+        dlg.show()  # Show non-modal so it doesn't block, and charts can open
 
     def on_tab_changed(self, index):
         """Handle tab change"""
